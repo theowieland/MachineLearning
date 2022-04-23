@@ -1,80 +1,107 @@
+import abc
+
 import numpy as np
+from abc import ABC
 
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+class ActivationFunction(ABC):
+
+    @abc.abstractmethod
+    def activate(self, x):
+        pass
+
+    @abc.abstractmethod
+    def derivative(self, y):
+        pass
 
 
-def sigmoid_derivative(y):
-    return y * (1 - y)
+class SigmoidActivation(ActivationFunction):
+
+    def activate(self, x):
+        return 1 / (1 + np.exp(-x))
+
+    def derivative(self, y):
+        return y * (1 - y)
+
+
+class ReLUActivation(ActivationFunction):
+
+    def activate(self, x):
+        return max(0, x)
+
+    def derivative(self, y):
+        return 1 if y > 0 else 0
 
 
 class NeuralNetwork:
 
-    def __init__(self, layers):
+    def __init__(self, layers, activation=SigmoidActivation()):
         self.layers = layers
+        self.activation = activation
 
         self.weights = [np.random.rand(self.layers[layer], self.layers[layer - 1]) for layer in range(1, len(layers))]
-        self.biases = [np.random.rand(self.layers[layer]) for layer in range(1, len(layers))]
+        self.biases = [np.zeros(self.layers[layer]) for layer in range(1, len(layers))]
 
-    def layer_results(self, inputs):
-        """
-        calculate the output for each layer
+        self.weight_adjustments = [np.random.rand(self.layers[layer], self.layers[layer - 1]) for layer in range(1, len(layers))]
+        self.bias_adjustments = [np.ones(self.layers[layer]) for layer in range(1, len(layers))]
 
-        :param inputs: the input vector
-        :return: the output vector for each layer
-        """
-        results = list()
-        previous_layer_result = inputs
-        results.append(previous_layer_result)
+        # stores the output of each layer after one forward pass
+        self.outputs = [np.zeros(self.layers[layer]) for layer in range(0, len(layers))]
+
+    def output(self):
+        return self.outputs[len(self.layers) - 1]
+
+    def classification(self, inputs):
+        self.feed_forward(inputs)
+        return [round(value) for value in self.output()]
+
+    def feed_forward(self, inputs):
+        self.outputs[0] = inputs
 
         for layer in range(1, len(self.layers)):
-            previous_layer_result = np.dot(self.weights[layer - 1], previous_layer_result) + self.biases[layer - 1]
+            self.outputs[layer] = np.dot(self.weights[layer -1], self.outputs[layer - 1]) + self.biases[layer - 1]
 
             # apply activation function
-            previous_layer_result = np.array([sigmoid(x) for x in previous_layer_result])
+            self.outputs[layer] = np.array([self.activation.activate(value) for value in self.outputs[layer]])
 
-            results.append(previous_layer_result)
+        return self.output()
 
-        return results
-
-    def feedforward(self, input):
-        # return the result vector from the last layer
-        return self.layer_results(input)[len(self.layers) - 1]
-
-    def train(self, input, expected_result, learning_rate=.1):
-        layer_results = self.layer_results(input)
-
-        previous_layer_error = layer_results[len(self.layers) - 1] - expected_result
-
-        all_weight_adjustments = list()
-        all_bias_adjustments = list()
-
+    def feed_backward(self, expected_output, learning_rate=0.1):
+        previous_layer_error = np.subtract(self.output(), expected_output)
         for layer in range(len(self.layers) - 1, 0, -1):
-            layer_bias_adjustments = np.zeros(shape=(self.layers[layer]))
-            layer_weight_adjustments = np.zeros(shape=(self.layers[layer], self.layers[layer - 1]))
-            activation_function_errors = np.zeros(shape=(self.layers[layer]))
+            deltas = np.multiply(previous_layer_error, [self.activation.derivative(y) for y in self.outputs[layer]])
 
-            for current_neuron in range(self.layers[layer]):
-                activation_function_errors[current_neuron] = previous_layer_error[current_neuron] * sigmoid_derivative(layer_results[layer][current_neuron])
-                layer_bias_adjustments[current_neuron] = activation_function_errors[current_neuron]
+            self.weight_adjustments[layer - 1] = learning_rate * np.outer(deltas, self.outputs[layer - 1])
+            self.bias_adjustments[layer - 1] = learning_rate * deltas
 
-                layer_weight_adjustments[current_neuron] = [activation_function_errors[current_neuron] * layer_results[layer - 1][previous_neuron] for previous_neuron in range(self.layers[layer - 1])]
+            previous_layer_error = [
+                sum([deltas[current_neuron] * self.weights[layer - 1][current_neuron][
+                    previous_neuron]
+                     for current_neuron in range(self.layers[layer])])
+                for previous_neuron in range(self.layers[layer - 1])]
 
-            previous_layer_error = np.zeros(shape=(self.layers[layer - 1]))
+    def update_weights_and_biases(self):
+        for layer in range(0, len(self.layers) - 1):
+            self.weights[layer] = np.subtract(self.weights[layer], self.weight_adjustments[layer])
+            self.biases[layer] = np.subtract(self.biases[layer], self.bias_adjustments[layer])
 
-            for previous_neuron in range(self.layers[layer - 1]):
-                previous_layer_error[previous_neuron] = sum([activation_function_errors[current_neuron] * self.weights[layer - 1][current_neuron][previous_neuron] for current_neuron in range(self.layers[layer])])
+    def train(self, dataset, num_iterations, learning_rate=.15):
+        for iteration in range(num_iterations):
 
-            all_weight_adjustments.append(layer_weight_adjustments)
-            all_bias_adjustments.append(layer_bias_adjustments)
+            for (inputs, expected_output) in dataset:
+                self.feed_forward(inputs)
+                self.feed_backward(expected_output, learning_rate)
+                self.update_weights_and_biases()
 
-        all_weight_adjustments.reverse()
-        all_bias_adjustments.reverse()
+    def evaluate(self, dataset):
+        correct = 0
 
-        for layer in range(len(self.layers) - 1):
-            self.weights[layer] -= learning_rate * all_weight_adjustments[layer]
-            self.biases[layer] -= learning_rate * all_bias_adjustments[layer]
+        for (inputs, expected_output) in dataset:
+            self.feed_forward(inputs)
+            if np.array_equiv(self.classification(inputs), expected_output):
+                correct += 1
+
+        return correct / len(dataset)
 
     def print(self):
         print(self.weights)

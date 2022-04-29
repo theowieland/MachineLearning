@@ -1,7 +1,7 @@
 import gzip
 import numpy as np
 
-from neuralnetwork.NeuralNetwork import NeuralNetwork, ReLUActivation
+from neuralnetwork.NeuralNetwork import NeuralNetwork, SigmoidActivation
 
 FOLDER = ""
 
@@ -49,11 +49,11 @@ if __name__ == '__main__':
     test_images = read_images(FOLDER + "/" + TEST_IMAGES, TEST_SIZE, IMAGE_WIDTH, IMAGE_HEIGHT)
     test_labels = read_labels(FOLDER + "/" + TEST_LABELS, TEST_SIZE)
 
-    nn = NeuralNetwork([IMAGE_WIDTH * IMAGE_HEIGHT, 16, 16, 10], activation=ReLUActivation())
+    nn = NeuralNetwork([IMAGE_WIDTH * IMAGE_HEIGHT, 64, 16, 10], activation=SigmoidActivation())
 
     # prepare training set
     training_set = list()
-    for training_image_index in range(1):
+    for training_image_index in range(TRAINING_SIZE):
         expected_result = np.zeros(10)
         expected_result[training_labels[training_image_index]] = 1
         training_set.append((normalize_vec(training_images[training_image_index].flatten(), 255), expected_result))
@@ -65,5 +65,14 @@ if __name__ == '__main__':
         expected_result[test_labels[test_image_index]] = 1
         test_set.append((normalize_vec(test_images[test_image_index].flatten(), 255), expected_result))
 
-    nn.train(training_set, 50000, 0.15)
-    print("evaluation result: " + str(nn.evaluate(test_set)))
+    for iteration in range(0, 500):
+        batch = np.random.randint(0, len(training_set), size=128)
+        batch_data = [training_set[index] for index in batch]
+
+        nn.train(batch_data, 10, 0.015, print_debug=False)
+
+        evaluation = np.random.randint(0, len(test_set), size=25)
+        evaluation_data = [test_set[index] for index in evaluation]
+        print(str(iteration) + ": evaluation result (correct): " + str(nn.evaluate(evaluation_data) / len(evaluation_data)))
+
+    print("final evaluation result: " + str(nn.evaluate(test_set)))

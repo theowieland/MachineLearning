@@ -4,7 +4,7 @@ import time
 from neuralnetwork.NeuralNetwork import NeuralNetwork
 
 if __name__ == '__main__':
-    nn = NeuralNetwork([2, 30, 2])
+    nn = NeuralNetwork([2, 30, 1])
 
     print("feed forward result: " + str(nn.feed_forward(np.asarray([0, 0]))))
     print("feed forward result: " + str(nn.feed_forward(np.asarray([0, 1]))))
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     x_or_data.append(([0, 1], [1]))
     x_or_data.append(([1, 1], [0]))
 
-    nn.train(x_or_data, 10000)
+    nn.train(x_or_data, 100000)
 
     print("--- %s seconds ---" % (time.time() - start_time))
 

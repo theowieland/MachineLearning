@@ -39,7 +39,7 @@ class NeuralNetwork:
         self.layers = layers
         self.activation = activation
 
-        self.weights = [np.random.rand(self.layers[layer], self.layers[layer - 1]) for layer in range(1, len(layers))]
+        self.weights = [np.random.uniform(-1.0, 1.0, size=(self.layers[layer], self.layers[layer - 1])) / np.sqrt(self.layers[layer] * self.layers[layer - 1]) for layer in range(1, len(layers))]
         self.biases = [np.zeros(self.layers[layer]) for layer in range(1, len(layers))]
 
         self.weight_adjustments = [np.random.rand(self.layers[layer], self.layers[layer - 1]) for layer in range(1, len(layers))]
@@ -62,31 +62,32 @@ class NeuralNetwork:
             self.outputs[layer] = np.dot(self.weights[layer -1], self.outputs[layer - 1]) + self.biases[layer - 1]
 
             # apply activation function
-            self.outputs[layer] = np.array([self.activation.activate(value) for value in self.outputs[layer]])
+            self.outputs[layer] = self.activation.activate(self.outputs[layer])
 
         return self.output()
 
     def feed_backward(self, expected_output, learning_rate=0.1):
         previous_layer_error = np.subtract(self.output(), expected_output)
+
         for layer in range(len(self.layers) - 1, 0, -1):
-            deltas = np.multiply(previous_layer_error, [self.activation.derivative(y) for y in self.outputs[layer]])
+            deltas = np.multiply(previous_layer_error, self.activation.derivative(self.outputs[layer]))
 
-            self.weight_adjustments[layer - 1] = learning_rate * np.outer(deltas, self.outputs[layer - 1])
-            self.bias_adjustments[layer - 1] = learning_rate * deltas
+            np.multiply(learning_rate, np.einsum('i,j->ij', deltas, self.outputs[layer - 1]), out=self.weight_adjustments[layer - 1])
+            np.multiply(learning_rate, deltas, out=self.biases[layer - 1])
 
-            previous_layer_error = [
-                sum([deltas[current_neuron] * self.weights[layer - 1][current_neuron][
-                    previous_neuron]
-                     for current_neuron in range(self.layers[layer])])
-                for previous_neuron in range(self.layers[layer - 1])]
+            previous_layer_error = self.weights[layer - 1].T @ deltas
 
     def update_weights_and_biases(self):
         for layer in range(0, len(self.layers) - 1):
-            self.weights[layer] = np.subtract(self.weights[layer], self.weight_adjustments[layer])
-            self.biases[layer] = np.subtract(self.biases[layer], self.bias_adjustments[layer])
+            np.subtract(self.weights[layer], self.weight_adjustments[layer], out=self.weights[layer])
+            np.subtract(self.biases[layer], self.bias_adjustments[layer], out=self.biases[layer])
 
-    def train(self, dataset, num_iterations, learning_rate=.15):
+    def train(self, dataset, num_iterations, learning_rate=.015, print_debug=True):
+        debug_steps = num_iterations / 25
+
         for iteration in range(num_iterations):
+            if (iteration % debug_steps) == 0 and print_debug:
+                print("training progress: %d%%" % ((iteration / num_iterations) * 100))
 
             for (inputs, expected_output) in dataset:
                 self.feed_forward(inputs)
@@ -101,7 +102,7 @@ class NeuralNetwork:
             if np.array_equiv(self.classification(inputs), expected_output):
                 correct += 1
 
-        return correct / len(dataset)
+        return correct
 
     def print(self):
         print(self.weights)

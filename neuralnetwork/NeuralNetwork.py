@@ -14,6 +14,13 @@ class ActivationFunction(ABC):
     def derivative(self, y):
         pass
 
+    @abc.abstractmethod
+    def initial_weights_range(self, neurons_in, neurons_out) -> (float, float):
+        """
+        :return: (min_value, max_value)
+        """
+        pass
+
 
 class SigmoidActivation(ActivationFunction):
 
@@ -23,14 +30,50 @@ class SigmoidActivation(ActivationFunction):
     def derivative(self, y):
         return y * (1 - y)
 
+    def initial_weights_range(self, neurons_in, neurons_out) -> (float, float):
+        divisor = np.sqrt(neurons_in * neurons_out)
+
+        return -1.0 / divisor, 1.0 / divisor
+
+
+class TanhActivation(ActivationFunction):
+
+    def activate(self, x):
+        return np.tanh(x)
+
+    def derivative(self, y):
+        return 1 - np.power(y, 2)
+
+    def initial_weights_range(self, neurons_in, neurons_out) -> (float, float):
+        divisor = np.sqrt(neurons_in * neurons_out)
+
+        return -1.0 / divisor, 1.0 / divisor
+
 
 class ReLUActivation(ActivationFunction):
 
     def activate(self, x):
-        return max(0, x)
+        return [max(0, value) for value in x]
 
     def derivative(self, y):
-        return 1 if y > 0 else 0
+        return [1 if value > 0 else 0 for value in y]
+
+    def initial_weights_range(self, neurons_in, neurons_out) -> (float, float):
+        r = np.sqrt(12 / (neurons_in + neurons_out))
+        return -r, r
+
+
+class LeakyReLUActivation(ActivationFunction):
+
+    def activate(self, x):
+        return [value if value > 0 else 0.01 * value for value in x]
+
+    def derivative(self, y):
+        return [1 if value > 0 else 0.01 for value in y]
+
+    def initial_weights_range(self, neurons_in, neurons_out) -> (float, float):
+        r = np.sqrt(12 / (neurons_in + neurons_out))
+        return -r, r
 
 
 class NeuralNetwork:
@@ -39,11 +82,15 @@ class NeuralNetwork:
         self.layers = layers
         self.activation = activation
 
-        self.weights = [np.random.uniform(-1.0, 1.0, size=(self.layers[layer], self.layers[layer - 1])) / np.sqrt(self.layers[layer] * self.layers[layer - 1]) for layer in range(1, len(layers))]
+        self.weights = [np.zeros(shape=(self.layers[layer], self.layers[layer - 1])) for layer in range(1, len(self.layers))]
+        for layer in range(1, len(layers)):
+            (initial_min, initial_max) = activation.initial_weights_range(self.layers[layer - 1], self.layers[layer])
+            self.weights[layer - 1] = np.random.uniform(initial_min, initial_max, size=(self.layers[layer], self.layers[layer - 1]))
+
         self.biases = [np.zeros(self.layers[layer]) for layer in range(1, len(layers))]
 
-        self.weight_adjustments = [np.random.rand(self.layers[layer], self.layers[layer - 1]) for layer in range(1, len(layers))]
-        self.bias_adjustments = [np.ones(self.layers[layer]) for layer in range(1, len(layers))]
+        self.weight_adjustments = [np.zeros(shape=(self.layers[layer], self.layers[layer - 1])) for layer in range(1, len(layers))]
+        self.bias_adjustments = [np.zeros(self.layers[layer]) for layer in range(1, len(layers))]
 
         # stores the output of each layer after one forward pass
         self.outputs = [np.zeros(self.layers[layer]) for layer in range(0, len(layers))]
@@ -72,15 +119,14 @@ class NeuralNetwork:
         for layer in range(len(self.layers) - 1, 0, -1):
             deltas = np.multiply(previous_layer_error, self.activation.derivative(self.outputs[layer]))
 
-            np.multiply(learning_rate, np.einsum('i,j->ij', deltas, self.outputs[layer - 1]), out=self.weight_adjustments[layer - 1])
-            np.multiply(learning_rate, deltas, out=self.biases[layer - 1])
-
+            self.weight_adjustments[layer - 1] = learning_rate * np.outer(deltas, self.outputs[layer - 1])
+            self.bias_adjustments[layer - 1] = learning_rate * deltas
             previous_layer_error = self.weights[layer - 1].T @ deltas
 
     def update_weights_and_biases(self):
         for layer in range(0, len(self.layers) - 1):
-            np.subtract(self.weights[layer], self.weight_adjustments[layer], out=self.weights[layer])
-            np.subtract(self.biases[layer], self.bias_adjustments[layer], out=self.biases[layer])
+            self.weights[layer] -= self.weight_adjustments[layer]
+            self.biases[layer] -= self.bias_adjustments[layer]
 
     def train(self, dataset, num_iterations, learning_rate=.015, print_debug=True):
         debug_steps = num_iterations / 25
@@ -107,3 +153,6 @@ class NeuralNetwork:
     def print(self):
         print(self.weights)
         print(self.biases)
+
+    def export(self, file):
+        print(np.array2string(self.weights[0]))

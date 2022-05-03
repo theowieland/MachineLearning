@@ -1,10 +1,11 @@
 import numpy as np
 import time
 
-from neuralnetwork.NeuralNetwork import NeuralNetwork
+from neuralnetwork.NeuralNetwork import NeuralNetwork, ReLUActivation, SigmoidActivation, TanhActivation, \
+    LeakyReLUActivation
 
 if __name__ == '__main__':
-    nn = NeuralNetwork([2, 30, 1])
+    nn = NeuralNetwork([2, 30, 1], activation=TanhActivation())
 
     print("feed forward result: " + str(nn.feed_forward(np.asarray([0, 0]))))
     print("feed forward result: " + str(nn.feed_forward(np.asarray([0, 1]))))
@@ -30,3 +31,4 @@ if __name__ == '__main__':
     print("feed forward result: " + str(nn.feed_forward(np.asarray([1, 0]))))
     print("feed forward result: " + str(nn.feed_forward(np.asarray([1, 1]))))
 
+    nn.print()

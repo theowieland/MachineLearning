@@ -21,7 +21,7 @@ TEST_SIZE = 10000
 TEST_IMAGES = "t10k-images-idx3-ubyte.gz"
 TEST_LABELS = "t10k-labels-idx1-ubyte.gz"
 
-EXAMPLE_FOLDER = "mnist_test_images"
+EXAMPLE_FOLDER = "data/mnist_test_images"
 
 
 def read_images(path, num_images, image_width, image_height):
@@ -61,14 +61,14 @@ def rgb2gray(rgb):
     return np.dot(rgb[..., :3], [0.2989, 0.5870, 0.1140])
 
 
-if __name__ == '__main__':
+def train_and_export_neural_network():
+    nn = NeuralNetwork([IMAGE_WIDTH * IMAGE_HEIGHT, 128, 16, 10], activation=SigmoidActivation())
+
     training_images = read_images(FOLDER + "/" + TRAINING_IMAGES, TRAINING_SIZE, IMAGE_WIDTH, IMAGE_HEIGHT)
     training_labels = read_labels(FOLDER + "/" + TRAINING_LABELS, TRAINING_SIZE)
 
     test_images = read_images(FOLDER + "/" + TEST_IMAGES, TEST_SIZE, IMAGE_WIDTH, IMAGE_HEIGHT)
     test_labels = read_labels(FOLDER + "/" + TEST_LABELS, TEST_SIZE)
-
-    nn = NeuralNetwork([IMAGE_WIDTH * IMAGE_HEIGHT, 128, 16, 10], activation=TanhActivation())
 
     # prepare training set
     training_set = list()
@@ -84,20 +84,29 @@ if __name__ == '__main__':
         expected_result[test_labels[test_image_index]] = 1
         test_set.append((normalize_vec(test_images[test_image_index].flatten(), 255), expected_result))
 
-    for iteration in range(0, 2000):
+    for iteration in range(0, 4000):
         batch = np.random.randint(0, len(training_set), size=128)
         batch_data = [training_set[index] for index in batch]
 
-        nn.train(batch_data, 1, 0.15, print_debug=False)
+        nn.train(batch_data, num_iterations=1, learning_rate=0.10, print_debug=False)
 
         evaluation = np.random.randint(0, len(test_set), size=25)
         evaluation_data = [test_set[index] for index in evaluation]
-        print(str(iteration) + ": evaluation result (correct): " + str(nn.evaluate(evaluation_data) / len(evaluation_data)))
+        print(str(iteration) + ": evaluation result (correct): " + str(
+            nn.evaluate(evaluation_data) / len(evaluation_data)))
 
     print("final evaluation result: " + str(nn.evaluate(test_set)))
+    nn.export_to_file('data/mnist_trained_network.json')
+
+
+def classify_custom_images():
+    nn = NeuralNetwork()
+    nn.import_from_file('data/mnist_trained_network.json')
 
     test_images = read_test_images(EXAMPLE_FOLDER)
     for (file_name, image) in test_images:
         print("result: (" + str(file_name) + ") " + str(np.argmax(nn.feed_forward(normalize_vec(image, 255)))))
 
-    nn.print()
+
+if __name__ == '__main__':
+    classify_custom_images()

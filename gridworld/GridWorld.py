@@ -10,6 +10,9 @@ class Coordinate:
     def __sub__(self, other):
         return Coordinate(self.x - other.x, self.y - other.y)
 
+    def __rmul__(self, other):
+        return Coordinate(other * self.x, other * self.y)
+
     def __str__(self):
         return "(" + str(self.x) + ", " + str(self.y) + ")"
 
@@ -34,6 +37,18 @@ class GridWorld:
 
     def get(self, coordinate):
         return self.grid[coordinate.y][coordinate.x]
+
+    def coordinates_by_state(self, state):
+        coordinates = list()
+
+        for x in range(self.width):
+            for y in range(self.height):
+                coordinate = Coordinate(x, y)
+
+                if self.get(coordinate) == state:
+                    coordinates.append(coordinate)
+
+        return coordinates
 
     def fill(self, state):
         for x in range(self.width):

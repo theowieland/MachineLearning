@@ -72,7 +72,9 @@ class TabularQLearning:
             current_state = self.get_random_initial_state_index()
             self.epsilon = max(.1, 1 - (iteration / num_iterations))
 
-            while not self.is_terminal_state(current_state):
+            timeout = 0
+
+            while not self.is_terminal_state(current_state) and timeout < 10000:
                 possible_actions = self.possible_actions(current_state)
                 selected_action = self.epsilon_greedy_policy(current_state, possible_actions)
 
@@ -84,6 +86,8 @@ class TabularQLearning:
 
                 self.q_values[current_state][selected_action] += self.learning_rate * delta
                 current_state = target_state
+
+                timeout += 1
 
     def get_optimal_policy(self):
         optimal_policy = np.zeros(self.num_states)

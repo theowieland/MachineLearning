@@ -82,3 +82,4 @@ class Figure:
 
     def is_occupied(self, x, y):
         return self.shape[y][x] > 0
+

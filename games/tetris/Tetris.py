@@ -9,13 +9,8 @@ from games.tetris.Figures import Figure
 OCCUPIED = 1
 EMPTY = 0
 
-ACTION_MOVE_DOWN = 0
-ACTION_MOVE_LEFT = 1
-ACTION_MOVE_RIGHT = 2
-ACTION_ROTATE_CLOCKWISE = 3
-
-BOARD_HEIGHT = 15
-BOARD_WIDTH = 7
+BOARD_HEIGHT = 20
+BOARD_WIDTH = 12
 
 
 # (0, 0) is the top left coordinate
@@ -27,19 +22,34 @@ class Tetris:
 
     @staticmethod
     def clear_full_rows(board):
-        num_cleared_rows = 0
+        # detect full rows
+        full_rows = list()
+        for row in range(BOARD_HEIGHT):
+            if all(board[row][x] > EMPTY for x in range(BOARD_WIDTH)):
+                full_rows.append(row)
 
-        row = len(board) - 1
-        while row >= 0:
-            if all([board[row][x] > EMPTY for x in range(BOARD_WIDTH)]):
-                num_cleared_rows += 1
+        num_cleared_rows = len(full_rows)
 
-                # move all rows above down
-                for row_above in range(row - 1, 0, -1):
+        # remove full rows
+        if len(full_rows) > 0:  # there are lines to clear
+            row_to_copy_to = full_rows[len(full_rows) - 1]
+
+            for index in range(len(full_rows) - 1, 0, -1):
+                for partial_row in range(full_rows[index] - 1, full_rows[index - 1], -1):
                     for x in range(BOARD_WIDTH):
-                        board[row_above + 1][x] = board[row_above][x]
-            else:
-                row -= 1
+                        board[row_to_copy_to][x] = board[partial_row][x]
+
+                    row_to_copy_to -= 1
+
+            for remaining_row in range(full_rows[0] - 1, len(full_rows), -1):
+                for x in range(BOARD_WIDTH):
+                    board[row_to_copy_to][x] = board[remaining_row][x]
+
+                row_to_copy_to -= 1
+
+            for row_to_empty in range(0, len(full_rows)):
+                for x in range(BOARD_WIDTH):
+                    board[row_to_empty][x] = EMPTY
 
         return num_cleared_rows
 
@@ -118,61 +128,52 @@ class Tetris:
     def simulate_all_boards(board, figure):
         states = list()
 
-        for column in range(BOARD_WIDTH):
-            for rotation in range(0, 4):
+        current_board_height_sum = sum(Tetris.get_column_heights(board))
+
+        for column in range(-figure.width, BOARD_WIDTH + figure.width - 1):
+            for rotation in range(0, figure.max_rotation_index):
                 board_copy = deepcopy(board)
                 figure_copy = deepcopy(figure)
 
-                for _rotate in range(0, rotation):
-                    figure_copy.rotate_clockwise()
+                figure_copy.set_rotation_index(rotation)
 
                 figure_copy.x = column
+                figure_copy.y = 0
 
                 if not Tetris.intersects(board_copy, figure_copy):
                     Tetris.drop_figure(board_copy, figure_copy)
-                    reward = Tetris.clear_full_rows(board_copy) + (Tetris.get_average_column_height(board) - Tetris.get_average_column_height(board_copy))
 
-                    states.append((column, rotation, reward, board_copy))
+                    num_cleared_rows = Tetris.clear_full_rows(board_copy)
+                    feature_vector = Tetris.feature_vector(board_copy)
+
+                    next_figure = Tetris.get_random_figure()
+                    if Tetris.intersects(board_copy, next_figure):
+                        reward = -50
+                    else:
+                        reward = num_cleared_rows + ((current_board_height_sum - sum(Tetris.get_column_heights(board_copy))))
+
+                    states.append((column, rotation, reward, board_copy, next_figure, feature_vector))
 
         return states
 
     @staticmethod
-    def simulate_action(board, figure, column, rotation):
-        board_copy = deepcopy(board)
-        figure_copy = deepcopy(figure)
+    def get_column_heights(board):
+        heights = BOARD_HEIGHT - (board != EMPTY).argmax(axis=0)
+        heights = np.array([0 if height == BOARD_HEIGHT else height for height in heights])
 
-        for _rotate in range(0, rotation):
-            figure_copy.rotate_clockwise()
-
-        figure_copy.x = column
-        Tetris.drop_figure(board_copy, figure_copy)
-
-        reward = Tetris.clear_full_rows(board_copy) + (Tetris.get_average_column_height(board) - Tetris.get_average_column_height(board_copy))
-
-        return board_copy, reward
+        return heights
 
     @staticmethod
     def get_average_column_height(board):
-        column_height = [0] * BOARD_WIDTH
-
-        for column in range(0, BOARD_WIDTH):
-            y = 0
-
-            while not Tetris.is_occupied(board, column, y) and y < BOARD_HEIGHT - 1:
-                y += 1
-
-            column_height[column] = BOARD_HEIGHT - y
-
-        return np.average(column_height)
+        return np.average(Tetris.get_column_heights(board))
 
     @staticmethod
     def is_occupied(board, x, y):
         return board[y][x] != EMPTY
 
     @staticmethod
-    def feature_vector(board, figure):
-        heights = BOARD_HEIGHT - (board != EMPTY).argmax(axis=0)
-        heights = np.array([0 if height == BOARD_HEIGHT else height for height in heights])
+    def feature_vector(board):
+        heights = Tetris.get_column_heights(board)
 
         bumpiness = np.ediff1d(heights)
         sum_height_diff = sum(np.abs(bumpiness))
@@ -185,12 +186,18 @@ class Tetris:
 
         for x in range(0, BOARD_WIDTH):
             num_holes = 0
-            for y in range(BOARD_HEIGHT - 1, 0, -1):
-                if not Tetris.is_occupied(board, x, y) and Tetris.is_occupied(board, x, y - 1):
+            occupied_above = False
+            for y in range(0, BOARD_HEIGHT):
+                if not occupied_above and Tetris.is_occupied(board, x, y):
+                    occupied_above = True
+                elif occupied_above and not Tetris.is_occupied(board, x, y):
                     num_holes += 1
 
             holes[x] = num_holes
 
         sum_holes = sum(holes)
 
-        return np.concatenate(([0], [max_height, sum_height, sum_holes, average_height, sum_height_diff, 1]), axis=0)
+        return np.concatenate((
+            [sum_height, average_height, sum_height_diff, sum_holes, max_height],
+            [1]
+        ), axis=0)

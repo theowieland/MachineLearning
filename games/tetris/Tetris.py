@@ -150,7 +150,7 @@ class Tetris:
                     if Tetris.intersects(board_copy, next_figure):
                         reward = -50
                     else:
-                        reward = num_cleared_rows + ((current_board_height_sum - sum(Tetris.get_column_heights(board_copy))))
+                        reward = num_cleared_rows * 5 + (current_board_height_sum - sum(Tetris.get_column_heights(board_copy)))
 
                     states.append((column, rotation, reward, board_copy, next_figure, feature_vector))
 
